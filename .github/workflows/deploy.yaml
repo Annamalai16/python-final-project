@@ -49,7 +49,7 @@ jobs:
         run: |
           SHORT_SHA=${SHORT_SHA::7}
           IMAGE_URI=$REGISTRY/${{ env.ECR_REPO_NAME }}:$SHORT_SHA
-          docker build -t $IMAGE_URI -f Dockerfile final-project/
+          docker build -t $IMAGE_URI -f Dockerfile .
           docker push $IMAGE_URI
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
@@ -76,7 +76,7 @@ jobs:
         uses: aws-actions/aws-cloudformation-github-deploy@v1
         with:
           name: ${{ env.CF_STACK_NAME }}
-          template: ${{ github.workspace }}/final-project/cf/infra.yaml
+          template: ${{ github.workspace }}/cf/infra.yaml
           capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
           no-fail-on-empty-changeset: 1
           parameter-overrides: >-
