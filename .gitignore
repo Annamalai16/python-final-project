@@ -1,0 +1,11 @@
+__pycache__
+.env
+.env.*
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.cursor
+*.joblib
+.DS_Store
+*.csv
