@@ -34,10 +34,8 @@ jobs:
 
       - name: Create ECR repository if not exists
         run: |
-          aws ecr describe-repositories --repository-names ${{ env.ECR_REPO_NAME }} \
-            || aws ecr create-repository \
-                --repository-name ${{ env.ECR_REPO_NAME }} \
-                --image-scanning-configuration scanOnPush=true
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPO_NAME }} --region ${{ env.AWS_REGION }} || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPO_NAME }} --region ${{ env.AWS_REGION }} --image-scanning-configuration scanOnPush=true
 
       - name: Log in to ECR
         id: login-ecr
