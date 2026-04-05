@@ -49,7 +49,7 @@ jobs:
         run: |
           SHORT_SHA=${SHORT_SHA::7}
           IMAGE_URI=$REGISTRY/${{ env.ECR_REPO_NAME }}:$SHORT_SHA
-          docker build -t $IMAGE_URI -f Dockerfile .
+          docker build --platform linux/amd64 -t $IMAGE_URI -f Dockerfile .
           docker push $IMAGE_URI
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 

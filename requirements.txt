@@ -1,7 +1,8 @@
 yfinance==1.2.0
 psycopg2-binary==2.9.10
 python-dotenv>=1.0.0
+numpy==1.26.4
 pandas==2.2.0
-scikit-learn>=1.0.0
+scikit-learn==1.5.2
 joblib>=1.0.0
 boto3>=1.26.0
