@@ -1,0 +1,113 @@
+name: Deploy Stock Data Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO_NAME: stock-data-pipeline
+  CF_STACK_NAME: stock-data-pipeline
+  IMAGE_TAG: ${{ github.sha != '' && github.sha || 'latest' }}
+
+jobs:
+  build-and-push:
+    name: Build & Push ECR Image
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_uri: ${{ steps.build.outputs.image_uri }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5.0.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          role-session-name: StockPipelineBuild
+
+      - name: Create ECR repository if not exists
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPO_NAME }} \
+            || aws ecr create-repository \
+                --repository-name ${{ env.ECR_REPO_NAME }} \
+                --image-scanning-configuration scanOnPush=true
+
+      - name: Log in to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        id: build
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SHORT_SHA: ${{ github.sha }}
+        run: |
+          SHORT_SHA=${SHORT_SHA::7}
+          IMAGE_URI=$REGISTRY/${{ env.ECR_REPO_NAME }}:$SHORT_SHA
+          docker build -t $IMAGE_URI -f Dockerfile final-project/
+          docker push $IMAGE_URI
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+  deploy:
+    name: Deploy CloudFormation & Update Lambda
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5.0.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          role-session-name: StockPipelineDeploy
+
+      - name: Deploy CloudFormation stack
+        uses: aws-actions/aws-cloudformation-github-deploy@v1
+        with:
+          name: ${{ env.CF_STACK_NAME }}
+          template: ${{ github.workspace }}/final-project/cf/infra.yaml
+          capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
+          no-fail-on-empty-changeset: 1
+          parameter-overrides: >-
+            Envname=prod,
+            EcrImageUri=${{ needs.build-and-push.outputs.image_uri }},
+            DatabaseUrl=${{ secrets.DATABASE_URL }},
+            S3BucketName=stock-data-prediction,
+            ModelS3Key=models/rf_model.joblib
+          tags: >-
+            [
+              { "Key": "app",         "Value": "stock-data-pipeline" },
+              { "Key": "env",         "Value": "prod" },
+              { "Key": "commit",      "Value": "${{ github.sha }}" },
+              { "Key": "branch",      "Value": "${{ github.ref_name }}" },
+              { "Key": "deployed-by", "Value": "github-actions" }
+            ]
+
+      - name: Update Lambda with latest image
+        run: |
+          aws lambda update-function-code \
+            --function-name stock-data-pipeline-prod \
+            --image-uri ${{ needs.build-and-push.outputs.image_uri }}
+
+          aws lambda wait function-updated \
+            --function-name stock-data-pipeline-prod
+
+      - name: Print deployment summary
+        run: |
+          echo "Deployment complete!"
+          echo "Image : ${{ needs.build-and-push.outputs.image_uri }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"

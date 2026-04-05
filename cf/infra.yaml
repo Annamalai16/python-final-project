@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  Envname:
+    Type: String
+    Description: Environment name (e.g. dev, prod)
+
+  EcrImageUri:
+    Type: String
+    Description: Full ECR image URI including tag (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/stock-data-pipeline:latest)
+
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: PostgreSQL connection string for Supabase
+
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name for model and datasets
+
+  ModelS3Key:
+    Type: String
+    Default: models/rf_model.joblib
+    Description: S3 key for the trained model file
+
+  ScheduleExpression:
+    Type: String
+    Default: "cron(30 23 ? * MON-FRI *)"
+    Description: EventBridge Scheduler cron expression (evaluated in ScheduleTimezone)
+
+Resources:
+
+  # ── IAM Role ─────────────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub stock-data-pipeline-lambda-role-${Envname}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: stock-data-pipeline-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: stock-data-pipeline-s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${S3BucketName}
+                  - !Sub arn:aws:s3:::${S3BucketName}/*
+
+  # ── Lambda Function ───────────────────────────────────────────
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub stock-data-pipeline-${Envname}
+      Description: Daily stock data pipeline — fetches prices, enriches data, and runs RF predictions
+      PackageType: Image
+      Code:
+        ImageUri: !Ref EcrImageUri
+      Timeout: 900
+      MemorySize: 512
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          S3_BUCKET_NAME: !Ref S3BucketName
+          MODEL_S3_KEY: !Ref ModelS3Key
+
+  # ── CloudWatch Log Group ──────────────────────────────────────
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/stock-data-pipeline-${Envname}
+      RetentionInDays: 30
+
+  # ── EventBridge Scheduler Role ────────────────────────────────
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub stock-data-pipeline-scheduler-role-${Envname}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: stock-data-pipeline-scheduler-invoke
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt LambdaFunction.Arn
+
+  # ── EventBridge Scheduler (timezone-aware) ────────────────────
+  ScheduleRule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub stock-data-pipeline-schedule-${Envname}
+      Description: Triggers the stock data pipeline Mon-Fri at 11:30 PM America/Toronto
+      ScheduleExpression: !Ref ScheduleExpression
+      ScheduleExpressionTimezone: America/Toronto
+      State: ENABLED
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: !GetAtt LambdaFunction.Arn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+
+Outputs:
+  LambdaFunctionArn:
+    Value: !GetAtt LambdaFunction.Arn
+    Description: ARN of the deployed Lambda function
+
+  S3BucketName:
+    Value: !Ref S3BucketName
+    Description: S3 bucket used for model and datasets

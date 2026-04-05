@@ -1,6 +1,10 @@
 services:
   stock-pipeline:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.local
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      MODEL_S3_KEY: ${MODEL_S3_KEY}
       TZ: America/Toronto
