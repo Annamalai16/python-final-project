@@ -489,14 +489,13 @@ def InsertPredictedValues(
         raise
 
 
-def main():
-    run_date_str = os.environ.get("RunDate", "").strip()
-    if run_date_str:
+def main(run_date_override: str = None):
+    if run_date_override:
         try:
-            run_date = datetime.strptime(run_date_str, "%Y-%m-%d").date()
-            logger.info(f"RunDate overridden via environment variable: {run_date}")
+            run_date = datetime.strptime(run_date_override.strip(), "%Y-%m-%d").date()
+            logger.info(f"RunDate overridden via event: {run_date}")
         except ValueError:
-            logger.error(f"Invalid RunDate format '{run_date_str}'. Expected YYYY-MM-DD. Using today.")
+            logger.error(f"Invalid RunDate format '{run_date_override}'. Expected YYYY-MM-DD. Using today.")
             run_date = datetime.now().date()
     else:
         run_date = datetime.now().date()
