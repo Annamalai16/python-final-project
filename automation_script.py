@@ -418,7 +418,6 @@ def InsertIntoEnrichedDailyTable(
 
 
 def PullLast30DaysFromPostgres(pgsql: PgSql, ticker_map: Dict[str, str], run_date) -> pd.DataFrame:
-    logger.info(f"Pulling last 30 days enriched data from PostgreSQL (up to {run_date})...")
     tickers = tuple(ticker_map.keys())
     query = """
         SELECT ticker, date, open, high, low, close, volume,
