@@ -438,7 +438,6 @@ def PullLast30DaysFromPostgres(pgsql: PgSql, ticker_map: Dict[str, str], run_dat
         logger.warning(f"No enriched data found for last 30 days up to {run_date}.")
         return pd.DataFrame(columns=colnames if colnames else None)
     df = pd.DataFrame(rows, columns=colnames)
-    logger.info(f"Pulled {len(df)} rows for last 30 days ({df['ticker'].nunique()} tickers).")
     return df
 
 
